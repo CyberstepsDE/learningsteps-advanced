@@ -165,7 +165,29 @@ authorized_ip_ranges = [
 
 ## CI/CD Pipeline
 
-The GitHub Actions pipeline (`.github/workflows/infra-pipeline.yml`) supports two modes:
+The GitHub Actions pipeline (`.github/workflows/infra-pipeline.yml`) supports two modes.
+
+### Triggers
+
+| Trigger | When |
+|---------|------|
+| **Push** | Changes to `infra-terraform/` on main/master |
+| **Pull Request** | PRs targeting main/master with terraform changes |
+| **Manual** | Run anytime via "Actions" → "Run workflow" button |
+
+### Running Manually
+
+1. Go to **Actions** tab in GitHub
+2. Select **Infrastructure Pipeline**
+3. Click **Run workflow**
+4. Optionally specify a Terraform version (default: 1.14.4)
+5. Click **Run workflow**
+
+### Terraform Version
+
+The pipeline uses Terraform **1.14.4** by default. To change:
+- **Manual runs**: Specify version in the workflow dispatch input
+- **All runs**: Update `TF_VERSION` in the workflow file
 
 ### Pipeline Modes
 
