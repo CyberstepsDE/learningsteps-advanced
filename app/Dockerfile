@@ -19,6 +19,9 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # Final stage
 FROM python:3.11-slim
 
+# Update base image packages to fix security vulnerabilities
+RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser
 
