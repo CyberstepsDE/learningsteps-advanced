@@ -96,8 +96,35 @@ infra-terraform/
 | `node_count` | number | No | 1 | Number of nodes |
 | `vm_size` | string | No | Standard_D2s_v3 | VM size for nodes |
 | `kubernetes_version` | string | No | 1.33 | Kubernetes version |
+| `authorized_ip_ranges` | list(string) | No | ["0.0.0.0/0"] | Authorized IP ranges for API server access |
 | `postgresql_admin_password` | string | Yes | - | PostgreSQL admin password (sensitive) |
 | `postgresql_admin_username` | string | No | psqladmin | PostgreSQL admin username |
+
+---
+
+## Security Features
+
+The AKS cluster includes security hardening based on Trivy/tfsec recommendations:
+
+| Feature | Description | Reference |
+|---------|-------------|-----------|
+| **RBAC Enabled** | Role-Based Access Control for cluster access management | AVD-AZU-0042 |
+| **API Server IP Restriction** | Limits API server access to authorized IP ranges | AVD-AZU-0041 |
+| **Network Policy** | Azure CNI with network policy for pod-to-pod traffic control | AVD-AZU-0043 |
+
+### Restricting API Server Access (Production)
+
+For production environments, restrict `authorized_ip_ranges` to specific IPs:
+
+```hcl
+# In terraform.tfvars
+authorized_ip_ranges = [
+  "203.0.113.0/24",    # Office network
+  "198.51.100.50/32"   # VPN gateway
+]
+```
+
+> **Note**: The default `["0.0.0.0/0"]` allows all IPs for lab convenience. Always restrict this in production.
 
 ---
 

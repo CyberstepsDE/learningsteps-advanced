@@ -36,6 +36,12 @@ variable "kubernetes_version" {
   default     = "1.33"
 }
 
+variable "authorized_ip_ranges" {
+  description = "List of authorized IP ranges for API server access"
+  type        = list(string)
+  default     = ["0.0.0.0/0"] # Allow all for lab environment - restrict in production
+}
+
 # PostgreSQL Variables
 variable "postgresql_admin_username" {
   description = "Administrator username for PostgreSQL"
