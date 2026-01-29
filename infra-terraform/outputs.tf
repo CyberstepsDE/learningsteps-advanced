@@ -13,6 +13,16 @@ output "resource_group_name" {
   description = "Resource group name"
 }
 
+output "acr_login_server" {
+  value       = azurerm_container_registry.acr.login_server
+  description = "ACR login server URL"
+}
+
+output "acr_id" {
+  value       = azurerm_container_registry.acr.id
+  description = "ACR resource ID"
+}
+
 output "postgresql_server_name" {
   value       = azurerm_postgresql_flexible_server.postgres.name
   description = "PostgreSQL server name"
@@ -21,4 +31,9 @@ output "postgresql_server_name" {
 output "postgresql_fqdn" {
   value       = azurerm_postgresql_flexible_server.postgres.fqdn
   description = "PostgreSQL server FQDN"
+}
+
+output "postgresql_database_name" {
+  value       = azurerm_postgresql_flexible_server_database.app_db.name
+  description = "PostgreSQL database name"
 }

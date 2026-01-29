@@ -6,11 +6,35 @@ This chapter covers deploying Azure Kubernetes Service (AKS) using Terraform, wi
 
 ---
 
+## Table of Contents
+
+- [Important Note for Students](#important-note-for-students)
+- [Overview](#overview)
+- [Prerequisites](#prerequisites)
+- [What You Need to Change](#what-you-need-to-change)
+- [Quick Start (Local Deployment)](#quick-start-local-deployment)
+- [Project Structure](#project-structure)
+- **Resources**
+  - [Azure Kubernetes Service (AKS)](#azure-kubernetes-service-aks)
+  - [Azure Container Registry (ACR)](#azure-container-registry-acr)
+  - [PostgreSQL Flexible Server](#postgresql-flexible-server)
+- [Security Features](#security-features)
+- [CI/CD Pipeline](#cicd-pipeline)
+- [Remote State Backend](#remote-state-backend)
+- [Creating Azure Service Principal](#creating-azure-service-principal)
+- [Outputs](#outputs)
+- [Cleanup](#cleanup)
+- [Troubleshooting](#troubleshooting)
+- [Resources Links](#resources-links)
+
+---
+
 ## Important Note for Students
 
 > **Lab Environment Limitation**: In this training environment, students do not have access to Azure IAM (Identity and Access Management) to create Service Principals. Therefore, **Terraform will be deployed manually** using local Azure CLI authentication (`az login`).
 >
 > **In a real-world production scenario**, you would:
+>
 > 1. Create a Service Principal with appropriate permissions
 > 2. Configure GitHub Secrets with the credentials
 > 3. Set `ENABLE_AZURE_DEPLOY=true` in repository variables
@@ -26,8 +50,10 @@ This Terraform configuration provisions:
 
 - **Azure Resource Group**: Organizes and manages Azure resources
 - **AKS Cluster**: Azure Kubernetes Service with configurable node pool
-- **System Identity**: System-assigned managed identity for the cluster
-- **PostgreSQL Flexible Server**: Azure Database for PostgreSQL with firewall rules
+- **Azure Container Registry (ACR)**: Private container registry attached to AKS
+- **PostgreSQL Flexible Server**: Azure Database for PostgreSQL with database and firewall rules
+
+---
 
 ## Prerequisites
 
@@ -44,22 +70,41 @@ Before deploying, update these values in the configuration files:
 
 ### terraform.tfvars
 
-| Variable | Current Value | What to Change |
-|----------|---------------|----------------|
-| `location` | "West Europe" | Your preferred Azure region |
-| `environment` | "dev" | Keep as-is or change to "prod", "staging" |
-| `cluster_name` | "aks-west-eu" | Your unique cluster name |
-| `node_count` | 2 | Adjust based on your needs |
-| `subscription_id` | `c3dc5e7c-...` | **Replace with YOUR Azure subscription ID** |
+```hcl
+# Azure Configuration
+location        = "West Europe"           # Your preferred Azure region
+environment     = "dev"                   # Environment: dev, staging, prod
+subscription_id = "YOUR-SUBSCRIPTION-ID"  # Replace with YOUR Azure subscription ID
+
+# AKS Configuration
+cluster_name    = "aks-west-eu"           # Your unique cluster name
+node_count      = 2                       # Number of worker nodes
+vm_size         = "Standard_D2s_v3"       # VM size for nodes
+
+# Container Registry
+acr_name        = "acrwesteu"             # Globally unique ACR name (alphanumeric only)
+
+# PostgreSQL Database
+postgresql_database_name = "learning_journal"  # Name of the database to create
+```
+
+| Variable                   | What to Change                                            |
+| -------------------------- | --------------------------------------------------------- |
+| `subscription_id`          | **Required** - Replace with YOUR Azure subscription ID    |
+| `acr_name`                 | **Required** - Must be globally unique, alphanumeric only |
+| `postgresql_database_name` | Name of the PostgreSQL database to create                 |
+| `location`                 | Your preferred Azure region                               |
+| `cluster_name`             | Your unique cluster name                                  |
+| `node_count`               | Adjust based on your workload needs                       |
 
 ### backend.tf
 
-| Setting | Current Value | What to Change |
-|---------|---------------|----------------|
-| `resource_group_name` | "rg-terraform-state" | Your state storage resource group |
-| `storage_account_name` | "tfstateblob234" | **Replace with YOUR storage account name** |
-| `container_name` | "tfstate" | Keep as-is or change |
-| `key` | "application/learningsteps/terraform.tfstate" | Unique path for your state file |
+| Setting                | Current Value                                 | What to Change                             |
+| ---------------------- | --------------------------------------------- | ------------------------------------------ |
+| `resource_group_name`  | "rg-terraform-state"                          | Your state storage resource group          |
+| `storage_account_name` | "tfstateblob234"                              | **Replace with YOUR storage account name** |
+| `container_name`       | "tfstate"                                     | Keep as-is or change                       |
+| `key`                  | "application/learningsteps/terraform.tfstate" | Unique path for your state file            |
 
 ### Finding Your Subscription ID
 
@@ -82,22 +127,54 @@ az login
 az account set --subscription <subscription-id>
 ```
 
-### 2. Initialize and Deploy
+### 2. Set the PostgreSQL Password
+
+The `postgresql_admin_password` is a required sensitive variable. Pass it using one of these methods:
+
+**Option A: Environment variable (recommended)**
+
+```bash
+export TF_VAR_postgresql_admin_password="YourSecurePass123"
+```
+
+**Option B: Command line flag**
+
+```bash
+terraform plan -var="postgresql_admin_password=YourSecurePass123"
+terraform apply -var="postgresql_admin_password=YourSecurePass123"
+```
+
+**Option C: Create a local tfvars file (gitignored)**
+
+```bash
+# Create terraform.tfvars.local (already in .gitignore)
+echo 'postgresql_admin_password = "YourSecurePass123"' > terraform.tfvars.local
+
+# Then use it
+terraform plan -var-file="terraform.tfvars.local"
+```
+
+> **Password Requirements**: Use a strong password with uppercase, lowercase, numbers, and special characters. Minimum 8 characters.
+
+### 3. Initialize and Deploy
 
 ```bash
 cd infra-terraform
 
-# Initialize Terraform (skip remote backend for local dev)
-terraform init -backend=false
+# Initialize Terraform
+terraform init
 
-# Review changes
-terraform plan -var="postgresql_admin_password=YourSecurePass123!"
+# Review changes (if using env var)
+terraform plan
+
+# Or with inline password
+terraform plan -var="postgresql_admin_password=YourSecurePass123"
 
 # Apply
-terraform apply -var="postgresql_admin_password=YourSecurePass123!"
+terraform apply
 ```
 
-### 3. Connect to Your Cluster
+### 4. Connect to Your Cluster
 
 ```bash
 az aks get-credentials --resource-group rg-dev-aks --name aks-west-eu
@@ -110,7 +187,10 @@ kubectl get nodes
 
 ```
 infra-terraform/
-├── main.tf           # Resource definitions (RG, AKS, PostgreSQL)
+├── main.tf           # Resource Group definition
+├── aks.tf            # Azure Kubernetes Service cluster
+├── acr.tf            # Azure Container Registry + AKS role assignment
+├── postgresql.tf     # PostgreSQL Flexible Server + database + firewall rules
 ├── variables.tf      # Input variable declarations
 ├── outputs.tf        # Output values
 ├── provider.tf       # Azure provider configuration (~> 3.0)
@@ -120,20 +200,171 @@ infra-terraform/
 
 ---
 
-## Variables
+## Azure Kubernetes Service (AKS)
 
-| Variable | Type | Required | Default | Description |
-|----------|------|----------|---------|-------------|
-| `location` | string | Yes | - | Azure region (e.g., "West Europe") |
-| `environment` | string | Yes | - | Environment name (e.g., "dev", "prod") |
-| `cluster_name` | string | Yes | - | AKS cluster name |
-| `subscription_id` | string | Yes | - | Azure Subscription ID |
-| `node_count` | number | No | 1 | Number of nodes |
-| `vm_size` | string | No | Standard_D2s_v3 | VM size for nodes |
-| `kubernetes_version` | string | No | 1.33 | Kubernetes version |
-| `authorized_ip_ranges` | list(string) | No | ["0.0.0.0/0"] | Authorized IP ranges for API server access |
-| `postgresql_admin_password` | string | Yes | - | PostgreSQL admin password (sensitive) |
-| `postgresql_admin_username` | string | No | psqladmin | PostgreSQL admin username |
+**File:** `aks.tf`
+
+Deploys a managed Kubernetes cluster with:
+- System-assigned managed identity
+- RBAC enabled for security
+- Azure CNI networking with network policy
+- API server access restrictions
+- Configurable node pool
+
+### AKS Variables
+
+| Variable               | Type         | Required | Default         | Description                                |
+| ---------------------- | ------------ | -------- | --------------- | ------------------------------------------ |
+| `cluster_name`         | string       | Yes      | -               | AKS cluster name                           |
+| `node_count`           | number       | No       | 1               | Number of nodes in default pool            |
+| `vm_size`              | string       | No       | Standard_D2s_v3 | VM size for nodes                          |
+| `kubernetes_version`   | string       | No       | 1.33            | Kubernetes version                         |
+| `authorized_ip_ranges` | list(string) | No       | ["0.0.0.0/0"]   | Authorized IP ranges for API server access |
+
+### AKS Outputs
+
+| Output               | Description             |
+| -------------------- | ----------------------- |
+| `cluster_id`         | AKS cluster resource ID |
+| `cluster_name`       | AKS cluster name        |
+| `resource_group_name`| Resource group name     |
+
+### Connect to AKS
+
+```bash
+# Get credentials
+az aks get-credentials --resource-group rg-dev-aks --name aks-west-eu
+
+# Verify connection
+kubectl get nodes
+kubectl get pods -A
+```
+
+---
+
+## Azure Container Registry (ACR)
+
+**File:** `acr.tf`
+
+Deploys a private container registry with:
+- AKS integration via managed identity (no secrets needed)
+- Role assignment granting AKS `AcrPull` permission
+
+### How ACR Connects to AKS
+
+The AKS cluster uses **Managed Identity** to authenticate with ACR - no secrets required.
+
+| Method | How it Works | Secrets? |
+|--------|--------------|----------|
+| **Managed Identity (what we use)** | Azure IAM grants AKS identity permission to pull images | No secrets needed |
+| **Image Pull Secret (old way)** | Kubernetes secret with ACR username/password | Requires secret in each namespace |
+
+**What Terraform creates:**
+- ACR with admin access disabled (more secure)
+- Role assignment granting the AKS kubelet identity `AcrPull` permission
+
+**In Azure Portal, you can see this under:**
+ACR → Access control (IAM) → Role assignments → The AKS identity appears with "AcrPull" role
+
+### ACR Variables
+
+| Variable   | Type   | Required | Default | Description                               |
+| ---------- | ------ | -------- | ------- | ----------------------------------------- |
+| `acr_name` | string | Yes      | -       | ACR name (globally unique, alphanumeric)  |
+| `acr_sku`  | string | No       | Basic   | ACR SKU tier (Basic, Standard, Premium)   |
+
+### ACR Outputs
+
+| Output             | Description          |
+| ------------------ | -------------------- |
+| `acr_login_server` | ACR login server URL |
+| `acr_id`           | ACR resource ID      |
+
+### Using ACR with AKS
+
+```bash
+# Login to ACR (for pushing images)
+az acr login --name acrwesteu
+
+# Tag and push an image
+docker tag myapp:latest acrwesteu.azurecr.io/myapp:v1
+docker push acrwesteu.azurecr.io/myapp:v1
+```
+
+**In Kubernetes manifests** - no `imagePullSecrets` needed:
+
+```yaml
+containers:
+  - name: myapp
+    image: acrwesteu.azurecr.io/myapp:v1
+```
+
+---
+
+## PostgreSQL Flexible Server
+
+**File:** `postgresql.tf`
+
+Deploys Azure Database for PostgreSQL with:
+- Flexible Server (latest generation, recommended)
+- Application database creation
+- Firewall rule allowing Azure services
+
+### PostgreSQL Variables
+
+| Variable                   | Type   | Required | Default         | Description                           |
+| -------------------------- | ------ | -------- | --------------- | ------------------------------------- |
+| `postgresql_admin_password`| string | Yes      | -               | PostgreSQL admin password (sensitive) |
+| `postgresql_admin_username`| string | No       | psqladmin       | PostgreSQL admin username             |
+| `postgresql_database_name` | string | Yes      | -               | Name of the database to create        |
+| `postgresql_sku_name`      | string | No       | B_Standard_B1ms | PostgreSQL SKU (Burstable tier)       |
+| `postgresql_storage_mb`    | number | No       | 32768           | Storage size in MB (32 GB)            |
+| `postgresql_version`       | string | No       | 16              | PostgreSQL version                    |
+
+### PostgreSQL Outputs
+
+| Output                     | Description            |
+| -------------------------- | ---------------------- |
+| `postgresql_server_name`   | PostgreSQL server name |
+| `postgresql_fqdn`          | PostgreSQL FQDN        |
+| `postgresql_database_name` | Database name          |
+
+### Connecting to PostgreSQL
+
+```bash
+# Connection string format
+psql "host=<postgresql_fqdn> port=5432 dbname=learning_journal user=psqladmin password=<your-password> sslmode=require"
+
+# Example
+psql "host=psql-dev-aks-west-eu.postgres.database.azure.com port=5432 dbname=learning_journal user=psqladmin password=YourSecurePass123 sslmode=require"
+```
+
+### Network Access
+
+Current configuration allows Azure services to connect:
+
+```hcl
+# Firewall rule (0.0.0.0 = Azure services)
+start_ip_address = "0.0.0.0"
+end_ip_address   = "0.0.0.0"
+```
+
+For **production**, consider using:
+- VNet integration (private access)
+- Private endpoints
+- Specific IP allowlists
+
+---
+
+## Core Variables
+
+These variables are shared across all resources:
+
+| Variable          | Type   | Required | Default | Description                        |
+| ----------------- | ------ | -------- | ------- | ---------------------------------- |
+| `location`        | string | Yes      | -       | Azure region (e.g., "West Europe") |
+| `environment`     | string | Yes      | -       | Environment name (dev, prod, etc.) |
+| `subscription_id` | string | Yes      | -       | Azure Subscription ID              |
 
 ---
 
@@ -141,11 +372,11 @@ infra-terraform/
 
 The AKS cluster includes security hardening based on Trivy/tfsec recommendations:
 
-| Feature | Description | Reference |
-|---------|-------------|-----------|
-| **RBAC Enabled** | Role-Based Access Control for cluster access management | AVD-AZU-0042 |
-| **API Server IP Restriction** | Limits API server access to authorized IP ranges | AVD-AZU-0041 |
-| **Network Policy** | Azure CNI with network policy for pod-to-pod traffic control | AVD-AZU-0043 |
+| Feature                       | Description                                                  | Reference    |
+| ----------------------------- | ------------------------------------------------------------ | ------------ |
+| **RBAC Enabled**              | Role-Based Access Control for cluster access management      | AVD-AZU-0042 |
+| **API Server IP Restriction** | Limits API server access to authorized IP ranges             | AVD-AZU-0041 |
+| **Network Policy**            | Azure CNI with network policy for pod-to-pod traffic control | AVD-AZU-0043 |
 
 ### Restricting API Server Access (Production)
 
@@ -169,11 +400,11 @@ The GitHub Actions pipeline (`.github/workflows/infra-pipeline.yml`) supports tw
 
 ### Triggers
 
-| Trigger | When |
-|---------|------|
-| **Push** | Changes to `infra-terraform/` on main/master |
-| **Pull Request** | PRs targeting main/master with terraform changes |
-| **Manual** | Run anytime via "Actions" → "Run workflow" button |
+| Trigger          | When                                              |
+| ---------------- | ------------------------------------------------- |
+| **Push**         | Changes to `infra-terraform/` on main/master      |
+| **Pull Request** | PRs targeting main/master with terraform changes  |
+| **Manual**       | Run anytime via "Actions" → "Run workflow" button |
 
 ### Running Manually
 
@@ -186,15 +417,16 @@ The GitHub Actions pipeline (`.github/workflows/infra-pipeline.yml`) supports tw
 ### Terraform Version
 
 The pipeline uses Terraform **1.14.4** by default. To change:
+
 - **Manual runs**: Specify version in the workflow dispatch input
 - **All runs**: Update `TF_VERSION` in the workflow file
 
 ### Pipeline Modes
 
-| Mode | Azure Credentials | What Runs |
-|------|-------------------|-----------|
-| **Scan Only** (default) | Not needed | Security scan + Terraform validate |
-| **Full Deploy** | Required | Scan + Validate + Plan + Apply |
+| Mode                    | Azure Credentials | What Runs                          |
+| ----------------------- | ----------------- | ---------------------------------- |
+| **Scan Only** (default) | Not needed        | Security scan + Terraform validate |
+| **Full Deploy**         | Required          | Scan + Validate + Plan + Apply     |
 
 ### Pipeline Architecture
 
@@ -219,16 +451,16 @@ To enable Plan/Apply stages:
 
 ### Required GitHub Secrets (for full deployment)
 
-| Secret | Description |
-|--------|-------------|
-| `ARM_CLIENT_ID` | Azure Service Principal Client ID |
-| `ARM_CLIENT_SECRET` | Azure Service Principal Client Secret |
-| `ARM_SUBSCRIPTION_ID` | Azure Subscription ID |
-| `ARM_TENANT_ID` | Azure Tenant ID |
-| `BACKEND_RESOURCE_GROUP` | Resource group for state storage |
-| `BACKEND_STORAGE_ACCOUNT` | Storage account name for state |
-| `BACKEND_CONTAINER_NAME` | Blob container name |
-| `POSTGRESQL_ADMIN_PASSWORD` | PostgreSQL admin password |
+| Secret                      | Description                           |
+| --------------------------- | ------------------------------------- |
+| `ARM_CLIENT_ID`             | Azure Service Principal Client ID     |
+| `ARM_CLIENT_SECRET`         | Azure Service Principal Client Secret |
+| `ARM_SUBSCRIPTION_ID`       | Azure Subscription ID                 |
+| `ARM_TENANT_ID`             | Azure Tenant ID                       |
+| `BACKEND_RESOURCE_GROUP`    | Resource group for state storage      |
+| `BACKEND_STORAGE_ACCOUNT`   | Storage account name for state        |
+| `BACKEND_CONTAINER_NAME`    | Blob container name                   |
+| `POSTGRESQL_ADMIN_PASSWORD` | PostgreSQL admin password             |
 
 ### Security Scanners
 
@@ -303,13 +535,16 @@ az ad sp create-for-rbac --name "github-terraform" \
 
 After deployment, Terraform outputs:
 
-| Output | Description |
-|--------|-------------|
-| `cluster_id` | AKS cluster resource ID |
-| `cluster_name` | AKS cluster name |
-| `resource_group_name` | Resource group name |
-| `postgresql_server_name` | PostgreSQL server name |
-| `postgresql_fqdn` | PostgreSQL FQDN |
+| Output                     | Description                    |
+| -------------------------- | ------------------------------ |
+| `cluster_id`               | AKS cluster resource ID        |
+| `cluster_name`             | AKS cluster name               |
+| `resource_group_name`      | Resource group name            |
+| `acr_login_server`         | ACR login server URL           |
+| `acr_id`                   | ACR resource ID                |
+| `postgresql_server_name`   | PostgreSQL server name         |
+| `postgresql_fqdn`          | PostgreSQL FQDN                |
+| `postgresql_database_name` | PostgreSQL database name       |
 
 ---
 
@@ -353,8 +588,10 @@ terraform force-unlock <lock-id>
 
 ---
 
-## Resources
+## Resources Links
 
 - [Terraform Azure Provider](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs)
 - [Azure AKS Documentation](https://docs.microsoft.com/en-us/azure/aks/)
+- [Azure Container Registry](https://docs.microsoft.com/en-us/azure/container-registry/)
+- [Azure Database for PostgreSQL](https://docs.microsoft.com/en-us/azure/postgresql/)
 - [Terraform Best Practices](https://www.terraform.io/docs/cloud/guides/recommended-practices/)

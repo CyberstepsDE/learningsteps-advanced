@@ -42,6 +42,18 @@ variable "authorized_ip_ranges" {
   default     = ["0.0.0.0/0"] # Allow all for lab environment - restrict in production
 }
 
+# Azure Container Registry Variables
+variable "acr_name" {
+  description = "Name of the Azure Container Registry (must be globally unique, alphanumeric only)"
+  type        = string
+}
+
+variable "acr_sku" {
+  description = "SKU tier for Azure Container Registry"
+  type        = string
+  default     = "Basic"
+}
+
 # PostgreSQL Variables
 variable "postgresql_admin_username" {
   description = "Administrator username for PostgreSQL"
@@ -71,4 +83,9 @@ variable "postgresql_version" {
   description = "PostgreSQL version"
   type        = string
   default     = "16"
+}
+
+variable "postgresql_database_name" {
+  description = "Name of the PostgreSQL database to create"
+  type        = string
 }
