@@ -6,7 +6,7 @@ FastAPI learning journal application with automated CI/CD to Azure Kubernetes Se
 
 - **FastAPI** with PostgreSQL, Prometheus metrics (`/metrics`), health checks (`/health`)
 - **Auto-Schema**: Database tables created automatically on startup
-- **Security**: Trivy scanning, namespace-scoped RBAC, non-root containers
+- **Security**: Trivy code/image scanning, namespace-scoped RBAC, non-root containers
 - **CI/CD**: Push to main → build → scan → deploy to AKS
 
 ## Required GitHub Secrets
@@ -98,11 +98,10 @@ git push origin main
 ## Pipeline Stages
 
 ### CI (Build, Scan & Push)
-1. **Gitleaks** - Scan for secrets in code
-2. **Trivy Code Scan** - Scan source for vulnerabilities
-3. **Docker Build** - Build image with tag `${{ github.run_number }}`
-4. **Trivy Image Scan** - **CRITICAL GATE** (fails on CRITICAL vulns)
-5. **Push to ACR** - Only if scan passes
+1. **Trivy Code Scan** - Scan source for vulnerabilities
+2. **Docker Build** - Build image with tag `${{ github.run_number }}`
+3. **Trivy Image Scan** - **CRITICAL GATE** (fails on CRITICAL vulns)
+4. **Push to ACR** - Only if scan passes
 
 ### CD (Deploy to AKS)
 1. Configure kubectl with service account token
@@ -140,7 +139,7 @@ kubectl rollout status deployment/learningsteps-api -n learningsteps
 - Non-root container (UID 1000)
 - Capabilities dropped
 - Image scanning blocks CRITICAL CVEs
-- Secret scanning with Gitleaks
+- Code and image vulnerability scanning with Trivy
 
 **Database**:
 - Azure PostgreSQL Flexible Server
