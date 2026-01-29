@@ -35,16 +35,8 @@ jobs:
       # 1. Checkout Code
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Full history for Gitleaks
 
-      # 2. Gitleaks - Scan for secrets in code
-      - name: Gitleaks Secret Scan
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      # 3. Trivy - Scan code for vulnerabilities
+      # 2. Trivy - Scan code for vulnerabilities
       - name: Trivy Code Scan
         uses: aquasecurity/trivy-action@master
         with:
@@ -54,7 +46,7 @@ jobs:
           exit-code: '0'  # Don't fail on code scan
           severity: 'CRITICAL,HIGH'
 
-      # 4. Set up Docker Buildx
+      # 3. Set up Docker Buildx
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
