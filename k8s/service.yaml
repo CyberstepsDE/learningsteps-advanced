@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: learningsteps-api
+  labels:
+    app: learningsteps-api
+spec:
+  type: LoadBalancer
+  selector:
+    app: learningsteps-api
+  ports:
+  - name: http
+    port: 80
+    targetPort: 8000
+    protocol: TCP
+  sessionAffinity: None
