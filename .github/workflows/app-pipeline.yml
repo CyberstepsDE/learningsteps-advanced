@@ -63,8 +63,6 @@ jobs:
         working-directory: ${{ env.WORKING_DIR }}
         run: |
           docker build -t ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.run_number }} .
-          docker tag ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.run_number }} \
-            ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
 
       # 6. THE GATEKEEPER: Trivy Image Scan
       # This is the critical security gate
@@ -84,8 +82,7 @@ jobs:
         if: success()
         run: |
           docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:${{ github.run_number }}
-          docker push ${{ secrets.ACR_LOGIN_SERVER }}/${{ env.IMAGE_NAME }}:latest
-          echo "✅ Success! Image pushed to Azure Container Registry"
+          echo "✅ Success! Image pushed to Azure Container Registry with tag ${{ github.run_number }}"
 
       # 8. Upload build artifacts
       - name: Save image tag
@@ -143,12 +140,15 @@ jobs:
       # 4. Verify cluster connection
       - name: Verify cluster access
         run: |
-          kubectl get pods -n ${NAMESPACE} || echo "Namespace ready for deployment"
+          kubectl get pods -n ${{ env.NAMESPACE }} || echo "Namespace ready for deployment"
 
       # 5. Deploy to Kubernetes
       - name: Deploy to AKS
         env:
           ACR_LOGIN_SERVER: ${{ secrets.ACR_LOGIN_SERVER }}
+          NAMESPACE: ${{ env.NAMESPACE }}
+          IMAGE_NAME: ${{ env.IMAGE_NAME }}
+          IMAGE_TAG: ${{ env.IMAGE_TAG }}
         run: |
           # Update deployment image tag
           sed "s|image:.*learningsteps-api:.*|image: ${ACR_LOGIN_SERVER}/${IMAGE_NAME}:${IMAGE_TAG}|g" \
@@ -160,6 +160,6 @@ jobs:
       # 6. Verify deployment
       - name: Verify Deployment
         run: |
-          kubectl rollout status deployment/learningsteps-api -n ${NAMESPACE}
-          kubectl get pods -l app=learningsteps-api -n ${NAMESPACE}
-          kubectl get svc learningsteps-api -n ${NAMESPACE}
+          kubectl rollout status deployment/learningsteps-api -n ${{ env.NAMESPACE }}
+          kubectl get pods -l app=learningsteps-api -n ${{ env.NAMESPACE }}
+          kubectl get svc learningsteps-api -n ${{ env.NAMESPACE }}

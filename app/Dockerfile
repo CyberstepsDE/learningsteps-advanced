@@ -27,14 +27,14 @@ RUN groupadd -r appuser && useradd -r -g appuser appuser
 
 WORKDIR /app
 
-# Copy Python dependencies from builder
+# Copy Python dependencies from builder (as root first)
 COPY --from=builder /root/.local /home/appuser/.local
 
 # Copy application code
 COPY . .
 
 # Change ownership to non-root user
-RUN chown -R appuser:appuser /app
+RUN chown -R appuser:appuser /app /home/appuser/.local
 
 # Switch to non-root user
 USER appuser

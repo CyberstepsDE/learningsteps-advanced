@@ -67,16 +67,18 @@ az acr token credential generate \
 ### Step 4: Create Database Secret
 
 ```bash
-# Get values from Terraform
+# Get password from Terraform
 cd infra-terraform
-terraform output postgresql_fqdn
 terraform output postgresql_admin_password
 
-# Create secret (replace values)
-DATABASE_URL="postgresql://admin:PASSWORD@FQDN:5432/learning_journal?sslmode=require"
+# Create secret (replace PASSWORD with actual password)
+DATABASE_URL="postgresql://psqladmin:PASSWORD@psql-dev-aks-west-eu.postgres.database.azure.com:5432/learning_journal?sslmode=require"
 kubectl create secret generic learningsteps-secrets \
   --from-literal=database-url="${DATABASE_URL}" \
   -n learningsteps
+
+# Verify secret was created
+kubectl get secret learningsteps-secrets -n learningsteps
 ```
 
 ### Step 5: Add GitHub Secrets
