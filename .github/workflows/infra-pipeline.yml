@@ -36,13 +36,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Run Trivy vulnerability scanner
+      # Simple Scan: Code + Variables
+      - name: Run Trivy (IaC)
         uses: aquasecurity/trivy-action@master
         with:
           scan-type: "config"
-          scan-ref: "${{ env.WORKING_DIR }}"
+          scan-ref: "./infra-terraform"
+          trivy-config: trivy.yaml
+          args: "--tf-vars ./infra-terraform/terraform.tfvars"
           format: "table"
-          exit-code: "1"
+          exit-code: "1" # Fail on security issues
           severity: "CRITICAL,HIGH"
 
   terraform-validate:
