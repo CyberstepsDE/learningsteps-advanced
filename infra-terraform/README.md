@@ -38,6 +38,41 @@ This Terraform configuration provisions:
 
 ---
 
+## What You Need to Change
+
+Before deploying, update these values in the configuration files:
+
+### terraform.tfvars
+
+| Variable | Current Value | What to Change |
+|----------|---------------|----------------|
+| `location` | "West Europe" | Your preferred Azure region |
+| `environment` | "dev" | Keep as-is or change to "prod", "staging" |
+| `cluster_name` | "aks-west-eu" | Your unique cluster name |
+| `node_count` | 2 | Adjust based on your needs |
+| `subscription_id` | `c3dc5e7c-...` | **Replace with YOUR Azure subscription ID** |
+
+### backend.tf
+
+| Setting | Current Value | What to Change |
+|---------|---------------|----------------|
+| `resource_group_name` | "rg-terraform-state" | Your state storage resource group |
+| `storage_account_name` | "tfstateblob234" | **Replace with YOUR storage account name** |
+| `container_name` | "tfstate" | Keep as-is or change |
+| `key` | "application/learningsteps/terraform.tfstate" | Unique path for your state file |
+
+### Finding Your Subscription ID
+
+```bash
+# List all subscriptions
+az account list --output table
+
+# Get current subscription ID
+az account show --query id --output tsv
+```
+
+---
+
 ## Quick Start (Local Deployment)
 
 ### 1. Authenticate with Azure
