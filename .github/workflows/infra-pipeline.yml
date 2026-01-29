@@ -45,13 +45,6 @@ jobs:
           exit-code: "1"
           severity: "CRITICAL,HIGH"
 
-      - name: Run tfsec security scanner
-        uses: aquasecurity/tfsec-action@v1.0.0
-        with:
-          working_directory: ${{ env.WORKING_DIR }}
-          additional_args: --tfvars-file ${{ env.WORKING_DIR }}/terraform.tfvars
-          soft_fail: true
-
   terraform-validate:
     name: Terraform Format & Validate
     runs-on: ubuntu-latest
