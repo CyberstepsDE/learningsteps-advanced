@@ -99,19 +99,53 @@ git push origin main
 
 ## Pipeline Stages
 
-### CI (Build, Scan & Push)
-1. **Trivy Code Scan** - Scan source for vulnerabilities
-2. **Docker Build** - Build image with tag `${{ github.run_number }}`
-3. **Trivy Image Scan** - **CRITICAL GATE** (fails on CRITICAL vulns)
-4. **Push to ACR** - Only if scan passes
+The CI/CD pipeline consists of 5 sequential jobs:
 
-### CD (Deploy to AKS)
-1. Configure kubectl with service account token
-2. Update deployment with new image tag (using `sed`)
-3. Apply deployment and service manifests
-4. Verify rollout status
+### Step 1: Code Security Scan
+- **Job**: `code-scan`
+- **Purpose**: Scan application source code for vulnerabilities before building
+- **Tool**: Trivy filesystem scanner
+- **Severity**: CRITICAL and HIGH (informational only, doesn't block)
+- **Scans**: Python dependencies, configuration files, secrets
 
-**Triggers**: Runs on push to `main`/`master` or manual dispatch
+### Step 2: Build, Scan & Push Image
+- **Job**: `build-scan-push`
+- **Purpose**: Build Docker image, scan for vulnerabilities, push to ACR
+- **Steps**:
+  1. Build image with tag `${{ github.run_number }}`
+  2. Run Trivy image scan (**CRITICAL GATE** - pipeline fails if CRITICAL vulnerabilities found)
+  3. Push to ACR only if scan passes
+- **Note**: All operations happen in-memory, no artifact uploads needed
+
+### Step 3: Configure Kubernetes Access
+- **Job**: `setup-kubernetes`
+- **Purpose**: Configure kubectl with service account authentication
+- **Condition**: Only runs on `main`/`master` branch
+- **Authentication**: Uses `K8S_SERVER` and `K8S_TOKEN` secrets
+- **Verification**: Tests cluster connectivity
+
+### Step 4: Deploy to AKS
+- **Job**: `deploy-to-kubernetes`
+- **Purpose**: Deploy application to Kubernetes cluster
+- **Environment**: `production` (requires manual approval if configured)
+- **Steps**:
+  1. Download image tag artifact from build job
+  2. Use `sed` to replace image tag in deployment.yaml
+  3. Apply updated deployment manifest
+  4. Apply service manifest (LoadBalancer)
+
+### Step 5: Verify Deployment
+- **Job**: `verify-deployment`
+- **Purpose**: Ensure deployment completed successfully
+- **Checks**:
+  - Wait for rollout to complete
+  - Verify pods are running
+  - Check service is available
+
+**Triggers**:
+- Push to `main`/`master` branch (auto-deploy)
+- Pull requests (build and scan only, no deploy)
+- Manual dispatch via GitHub Actions UI
 
 ## Monitoring
 
@@ -168,32 +202,98 @@ uvicorn main:app --reload
 ### Pod Not Starting
 
 ```bash
-# Check pod status
+# Check pod status and events
 kubectl describe pod -l app=learningsteps-api -n learningsteps
 
-# View logs
-kubectl logs -l app=learningsteps-api -n learningsteps
+# View application logs
+kubectl logs -l app=learningsteps-api -n learningsteps --tail=100
 
-# Common issues:
-# - Missing database secret: kubectl get secret learningsteps-secrets -n learningsteps
-# - Image pull error: Check ACR credentials in GitHub secrets
+# Check if all pods are ready
+kubectl get pods -n learningsteps -o wide
 ```
+
+**Common Issues**:
+
+1. **Missing Database Secret**
+   - Symptom: Pod crashes with database connection error
+   - Check: `kubectl get secret learningsteps-secrets -n learningsteps`
+   - Fix: Create secret using Step 4 instructions above
+
+2. **Image Pull Error**
+   - Symptom: `ErrImagePull` or `ImagePullBackOff`
+   - Check ACR credentials in GitHub secrets (`ACR_LOGIN_SERVER`, `ACR_USERNAME`, `ACR_PASSWORD`)
+   - Verify ACR token hasn't expired: `az acr token show --name github-actions-token --registry acrwesteu`
+
+3. **Database Connection Failed**
+   - Symptom: `asyncpg.exceptions.InvalidPasswordError` or connection timeout
+   - Verify PostgreSQL server is running and accessible from AKS
+   - Check firewall rules allow AKS IP range
+   - Verify DATABASE_URL format is correct
+
+4. **Module Not Found**
+   - Symptom: `ModuleNotFoundError: No module named 'uvicorn'`
+   - Rebuild image with updated Dockerfile (should be fixed with single-stage build)
 
 ### Deployment Not Updating
 
 ```bash
-# Check current image
+# Check current image tag
 kubectl get deployment learningsteps-api -n learningsteps -o jsonpath='{.spec.template.spec.containers[0].image}'
 
-# Force restart
+# Check rollout status
+kubectl rollout status deployment/learningsteps-api -n learningsteps
+
+# View rollout history
+kubectl rollout history deployment/learningsteps-api -n learningsteps
+
+# Force restart (pulls latest image if tag changed)
 kubectl rollout restart deployment/learningsteps-api -n learningsteps
+
+# Rollback to previous version if needed
+kubectl rollout undo deployment/learningsteps-api -n learningsteps
 ```
 
 ### Pipeline Failing
 
-- **Trivy Image Scan**: Critical vulnerability found → Update base image or dependencies
-- **Image Pull**: Check ACR credentials in GitHub secrets
-- **Kubectl Access**: Verify `K8S_SERVER` and `K8S_TOKEN` are correct
+**Step 1: Code Scan Fails**
+- Trivy found vulnerabilities in dependencies
+- Review scan output and update requirements.txt versions
+- Pipeline continues even with HIGH severity (only blocks on CRITICAL in image scan)
+
+**Step 2: Build/Scan/Push Fails**
+
+1. **Build Fails**
+   - Check Dockerfile syntax
+   - Verify all COPY paths exist
+   - Check requirements.txt is valid
+
+2. **Trivy Image Scan Fails (CRITICAL GATE)**
+   - Critical vulnerability found in image
+   - Update base image: Change `FROM python:3.11-slim` to newer version
+   - Update system packages: `apt-get upgrade` in Dockerfile
+   - Update Python dependencies in requirements.txt
+   - Cannot bypass this - vulnerabilities must be fixed
+
+3. **Push to ACR Fails**
+   - Verify ACR credentials: `ACR_LOGIN_SERVER`, `ACR_USERNAME=token`, `ACR_PASSWORD`
+   - Check ACR exists: `az acr show --name acrwesteu`
+   - Verify token has push permissions (scope: `_repositories_admin`)
+
+**Step 3: Kubernetes Access Fails**
+- Verify `K8S_SERVER` is correct: Should be `https://...` format
+- Verify `K8S_TOKEN` is valid: Token may have been deleted or expired
+- Check service account: `kubectl get sa github-deployer -n learningsteps`
+- Verify secret exists: `kubectl get secret github-deployer-token -n learningsteps`
+
+**Step 4: Deploy Fails**
+- Check namespace exists: `kubectl get namespace learningsteps`
+- Verify RBAC permissions: Service account should have Role with deployment permissions
+- Check if deployment.yaml syntax is valid
+
+**Step 5: Verification Fails**
+- Deployment may be slow to roll out (check pod events)
+- Pods may be crash-looping (check logs)
+- Health check may be failing (check `/health` endpoint)
 
 ## File Structure
 
@@ -221,8 +321,80 @@ Set in pipeline (`NAMESPACE=learningsteps`):
 - Applied to all kubectl commands
 - Change in workflow file to use different namespace
 
+## Testing the Deployment
+
+Once deployed, you can test the API:
+
+```bash
+# Get the external IP (may take a few minutes to provision)
+kubectl get svc learningsteps-api -n learningsteps
+
+# Test health endpoint
+EXTERNAL_IP=$(kubectl get svc learningsteps-api -n learningsteps -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+curl http://$EXTERNAL_IP/health
+
+# Test Prometheus metrics
+curl http://$EXTERNAL_IP/metrics
+
+# View API documentation
+open http://$EXTERNAL_IP/docs  # Swagger UI
+
+# Create a learning journal entry
+curl -X POST http://$EXTERNAL_IP/entries \
+  -H "Content-Type: application/json" \
+  -d '{"data": {"title": "Test Entry", "content": "My first entry"}}'
+
+# List all entries
+curl http://$EXTERNAL_IP/entries
+```
+
+## Security Best Practices
+
+This project implements several security measures:
+
+1. **Image Scanning**: Trivy scans block deployment if CRITICAL vulnerabilities found
+2. **Non-Root Container**: Application runs as UID 1000 (appuser)
+3. **Namespace Isolation**: Dedicated namespace with namespace-scoped RBAC
+4. **Secret Management**: Database credentials stored in Kubernetes secrets
+5. **Network Policies**: Can be added to restrict pod-to-pod communication
+6. **TLS**: Should be configured with Ingress controller (not included in basic setup)
+7. **ACR Token Auth**: Uses scoped tokens instead of admin credentials
+8. **Service Account**: GitHub Actions uses service account with minimal permissions
+
+## Scaling
+
+```bash
+# Scale replicas manually
+kubectl scale deployment learningsteps-api -n learningsteps --replicas=3
+
+# Enable horizontal pod autoscaling
+kubectl autoscale deployment learningsteps-api -n learningsteps \
+  --cpu-percent=70 --min=2 --max=10
+
+# Check HPA status
+kubectl get hpa -n learningsteps
+```
+
+## Cleanup
+
+```bash
+# Delete application resources
+kubectl delete namespace learningsteps
+
+# Delete ACR images
+az acr repository delete --name acrwesteu --repository learningsteps-api --yes
+
+# Delete ACR token
+az acr token delete --name github-actions-token --registry acrwesteu --yes
+
+# Destroy Terraform infrastructure
+cd infra-terraform
+terraform destroy
+```
+
 ## Support
 
-- **Terraform Issues**: Check `infra-terraform/` outputs
-- **Pipeline Failures**: View GitHub Actions logs
-- **Runtime Issues**: Check pod logs with kubectl
+- **Terraform Issues**: Check `infra-terraform/` outputs and logs
+- **Pipeline Failures**: View GitHub Actions logs for detailed error messages
+- **Runtime Issues**: Use `kubectl logs` and `kubectl describe` commands
+- **Database Issues**: Check PostgreSQL server logs in Azure Portal
