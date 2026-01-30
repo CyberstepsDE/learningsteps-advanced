@@ -11,6 +11,7 @@ Run the automated setup script from the project root:
 ```
 
 This installs:
+
 - **Prometheus** - Metrics collection and storage
 - **Grafana** - Visualization and dashboards
 - **Alertmanager** - Alert routing and management
@@ -30,6 +31,7 @@ kubectl port-forward -n monitoring svc/prometheus-grafana 3000:80
 Then open: http://localhost:3000
 
 **Credentials**:
+
 - Username: `admin`
 - Password: `admin`
 
@@ -57,6 +59,7 @@ kubectl port-forward -n monitoring svc/prometheus-kube-prometheus-prometheus 909
 ```
 
 Open http://localhost:9090 and:
+
 1. Go to **Status → Targets**
 2. Look for your service (search "learningsteps")
 3. Check if status is **UP** (green)
@@ -83,6 +86,7 @@ Grafana includes many pre-built Kubernetes dashboards:
 3. **Kubernetes / Compute Resources / Pod** - Individual pod metrics
 
 To access:
+
 1. Click **Dashboards** in left sidebar
 2. Browse **General** and **Kubernetes** folders
 
@@ -95,21 +99,25 @@ To access:
 In Grafana, click **+ → Dashboard → Add visualization**, select **Prometheus**, and try these:
 
 **HTTP Request Rate**:
+
 ```promql
 rate(http_requests_total{namespace="learningsteps"}[5m])
 ```
 
 **Pod CPU Usage**:
+
 ```promql
 rate(container_cpu_usage_seconds_total{namespace="learningsteps",pod=~"learningsteps-api.*"}[5m])
 ```
 
 **Pod Memory Usage**:
+
 ```promql
 container_memory_working_set_bytes{namespace="learningsteps",pod=~"learningsteps-api.*"}
 ```
 
 **Response Time (95th percentile)**:
+
 ```promql
 histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{namespace="learningsteps"}[5m]))
 ```
@@ -121,11 +129,13 @@ histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{namespace="le
 ### Metrics Not Showing
 
 Check if service has annotations:
+
 ```bash
 kubectl get svc learningsteps-api -n learningsteps -o yaml | grep -A 3 annotations
 ```
 
 Test if metrics endpoint is accessible:
+
 ```bash
 POD=$(kubectl get pod -n learningsteps -l app=learningsteps-api -o jsonpath='{.items[0].metadata.name}')
 kubectl exec -n learningsteps $POD -- curl -s localhost:8000/metrics
@@ -134,6 +144,7 @@ kubectl exec -n learningsteps $POD -- curl -s localhost:8000/metrics
 ### Grafana Login Issues
 
 Reset admin password:
+
 ```bash
 kubectl exec -n monitoring $(kubectl get pod -n monitoring -l app.kubernetes.io/name=grafana -o jsonpath='{.items[0].metadata.name}') -- grafana-cli admin reset-admin-password newpassword
 ```
@@ -157,19 +168,6 @@ kubectl get svc prometheus-grafana -n monitoring
 ```
 
 Wait for `EXTERNAL-IP`, then access at `http://<EXTERNAL-IP>`.
-
----
-
-## Optional: Persistent Storage
-
-By default, Prometheus data is lost on pod restart. To enable persistence:
-
-```bash
-helm upgrade prometheus prometheus-community/kube-prometheus-stack \
-  --namespace monitoring \
-  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.accessModes[0]=ReadWriteOnce \
-  --set prometheus.prometheusSpec.storageSpec.volumeClaimTemplate.spec.resources.requests.storage=10Gi
-```
 
 ---
 
