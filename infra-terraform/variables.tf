@@ -33,7 +33,7 @@ variable "subscription_id" {
 variable "kubernetes_version" {
   description = "The version of Kubernetes to use for the AKS cluster"
   type        = string
-  default     = "1.33"
+  default     = "1.35.4"
 }
 
 variable "authorized_ip_ranges" {

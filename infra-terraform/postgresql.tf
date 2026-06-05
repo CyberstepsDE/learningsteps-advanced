@@ -1,8 +1,8 @@
 # PostgreSQL Flexible Server
 resource "azurerm_postgresql_flexible_server" "postgres" {
   name                   = "psql-${var.environment}-${var.cluster_name}"
-  resource_group_name    = azurerm_resource_group.aks.name
-  location               = azurerm_resource_group.aks.location
+  resource_group_name    = azurerm_resource_group.rg.name
+  location               = azurerm_resource_group.rg.location
   version                = var.postgresql_version
   administrator_login    = var.postgresql_admin_username
   administrator_password = var.postgresql_admin_password
