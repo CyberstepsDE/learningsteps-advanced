@@ -2,6 +2,10 @@
 *.tfstate
 *.tfstate.*
 *.tfplan
+*.tfplan.*
+tfplan
+tfplan.json
+tfplan.binary
 .terraform/
 .terraform.lock.hcl
 crash.log
