@@ -1,5 +1,5 @@
 # Single-stage build
-FROM python:3.11-slim
+FROM python:3.14-slim
 
 # Update base image packages to fix security vulnerabilities
 RUN apt-get update && apt-get upgrade -y && rm -rf /var/lib/apt/lists/*
